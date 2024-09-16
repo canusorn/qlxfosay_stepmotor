@@ -24,27 +24,33 @@ void setup() {
   pinMode(STEP_PIN, OUTPUT);
   pinMode(ENABLE_PIN_, OUTPUT);
   pinMode(ENABLE_PIN, OUTPUT);
-  
-  digitalWrite(DIR_PIN_, LOW); 
-  digitalWrite(DIR_PIN, LOW); 
-  digitalWrite(STEP_PIN_, LOW); 
-  digitalWrite(STEP_PIN, LOW); 
-  digitalWrite(ENABLE_PIN_, LOW); 
-  digitalWrite(ENABLE_PIN, LOW); 
-  
-  stepper.setMaxSpeed(5000);     // Set maximum speed (steps per second)
-  stepper.setAcceleration(500);  // Set acceleration (steps per second^2)
+
+  digitalWrite(DIR_PIN_, LOW);
+  digitalWrite(DIR_PIN, LOW);
+  digitalWrite(STEP_PIN_, LOW);
+  digitalWrite(STEP_PIN, LOW);
+  digitalWrite(ENABLE_PIN_, LOW);
+  digitalWrite(ENABLE_PIN, LOW);
+
+  Serial.begin(115200);
+
+  stepper.setMaxSpeed(10000);     // Set maximum speed (steps per second)
+  stepper.setAcceleration(1000);  // Set acceleration (steps per second^2)
 }
 
 void loop() {
   // Set the target position (e.g., 1000 steps)
-  stepper.moveTo(10000);
+  stepper.moveTo(-10000);
 
   // Run the motor to the target position
   stepper.run();
 
+  Serial.println(stepper.distanceToGo());
+  Serial.println(stepper.currentPosition());
+  Serial.println("");
+
   // If the motor reaches the target position, move it back to the starting point
   if (stepper.distanceToGo() == 0) {
-    stepper.moveTo(-stepper.currentPosition());
+    digitalWrite(ENABLE_PIN, HIGH);
   }
 }
