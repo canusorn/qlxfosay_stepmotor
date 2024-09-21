@@ -34,8 +34,8 @@ void setup() {
 
   Serial.begin(115200);
 
-  stepper.setMaxSpeed(10000);     // Set maximum speed (steps per second)
-  stepper.setAcceleration(1000);  // Set acceleration (steps per second^2)
+  stepper.setMaxSpeed(4000);     // Set maximum speed (steps per second)
+  stepper.setAcceleration(2000);  // Set acceleration (steps per second^2)
 }
 
 void loop() {
@@ -45,9 +45,10 @@ void loop() {
   // Run the motor to the target position
   stepper.run();
 
-  Serial.println(stepper.distanceToGo());
-  Serial.println(stepper.currentPosition());
-  Serial.println("");
+//  Serial.println(stepper.distanceToGo());
+//  Serial.println(stepper.currentPosition());
+//  Serial.println(stepper.speed());
+//  Serial.println("");
 
   // If the motor reaches the target position, move it back to the starting point
   if (stepper.distanceToGo() == 0) {
