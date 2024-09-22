@@ -278,14 +278,20 @@ void settingFunc()
     if (settingState == 0)
     {
       display.println(F("set Round"));
+      display.setCursor(0, 28);
       display.println(destRound);
     }
     else
     {
-      display.println(F("set speed 0-9"));
+      display.println(F("set speed"));
+      display.setCursor(80, 25);
+      display.setTextSize(1);
+      display.println(F("(0-9)"));
+      display.setTextSize(2);
+      display.setCursor(0, 28);
       display.println(speed);
     }
-    display.setCursor(0, 50);
+    display.setCursor(80, 50);
     display.setTextSize(1);
     display.print("* Enter");
 
@@ -379,7 +385,7 @@ void OledDisplay()
 
     display.print("/");
     display.println(destRound);
-    display.setCursor(0, 50);
+    display.setCursor(80, 50);
     display.setTextSize(1);
     display.println("# Stop");
     display.display();
