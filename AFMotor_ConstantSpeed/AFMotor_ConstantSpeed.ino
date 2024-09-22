@@ -17,6 +17,9 @@
 #define STOP_POSITION 12000
 #define OFFSET_POSITION 200
 
+
+#define MAX_SPEED 4000
+
 uint8_t state = 0;     // 0 - calibrate 1 - run 2 - stop
 
 // Create an instance of AccelStepper
@@ -64,41 +67,52 @@ void setup() {
   digitalWrite(LIMIT_VCC, HIGH);
   digitalWrite(LIMIT_GND, LOW);
 
-  calibrate();
+  //  calibrate();
 }
 
 void loop() {
-  // Run the stepper motor non-blocking
-  if (stepper.distanceToGo() != 0) {
-    stepper.run();
-  } else {
-    // Change direction when the motor has reached its target
-    if (stepper.currentPosition() == START_POSITION) {
-      stepper.moveTo(STOP_POSITION);
-    } else if (stepper.currentPosition() == STOP_POSITION ) {
-      stepper.moveTo(START_POSITION);
+
+  if (state == 1) {
+    // Run the stepper motor non-blocking
+    if (stepper.distanceToGo() != 0) {
+      stepper.run();
     } else {
-      stepper.moveTo(STOP_POSITION);
+      // Change direction when the motor has reached its target
+      if (stepper.currentPosition() == START_POSITION) {
+        stepper.moveTo(STOP_POSITION);
+      } else if (stepper.currentPosition() == STOP_POSITION ) {
+        stepper.moveTo(START_POSITION);
+      } else {
+        stepper.moveTo(STOP_POSITION);
+      }
+    }
+
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= 500) {
+      previousMillis = currentMillis;
+
+      Serial.println(stepper.currentPosition());
+
+    }
+
+    readStop();
+  }
+  else if (state == 2) {
+    stepper.stop();
+    // Non-blocking keypad scan
+    customKeypad.tick();
+    while (customKeypad.available()) {
+      keypadEvent e = customKeypad.read();
+      Serial.print((char)e.bit.KEY);
+      if (e.bit.EVENT == KEY_JUST_PRESSED) Serial.println(" pressed");
+      else if (e.bit.EVENT == KEY_JUST_RELEASED) Serial.println(" released");
     }
   }
-
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= 500) {
-    previousMillis = currentMillis;
-
-    Serial.println(stepper.currentPosition());
-
+  else if (state == 0) {
+    calibrate();
   }
-  // Non-blocking keypad scan
-  //  customKeypad.tick();
-  //  while (customKeypad.available()) {
-  //    keypadEvent e = customKeypad.read();
-  //    Serial.print((char)e.bit.KEY);
-  //    if (e.bit.EVENT == KEY_JUST_PRESSED) Serial.println(" pressed");
-  //    else if (e.bit.EVENT == KEY_JUST_RELEASED) Serial.println(" released");
-  //  }
 
-  readStop();
+
 
 }
 
@@ -127,6 +141,7 @@ void readStop() {
   if (!digitalRead(28)) {
     Serial.println(digitalRead(28));
     stepper.stop();
+    state = 2;
   }
   if (!digitalRead(LIMIT_SIGNAL)) {
     stepper.stop();
@@ -147,8 +162,8 @@ void setZero() {
 
 void setWorkingSpeed() {
   // Set up the stepper motor
-  stepper.setMaxSpeed(10000);     // Max speed in steps per second
-  stepper.setAcceleration(5000);  // Acceleration in steps per second^2
+  stepper.setMaxSpeed(MAX_SPEED);     // Max speed in steps per second
+  stepper.setAcceleration(MAX_SPEED);  // Acceleration in steps per second^2
 
   // Start moving the stepper motor
   stepper.moveTo(STOP_POSITION); // Move 10000 steps forward
