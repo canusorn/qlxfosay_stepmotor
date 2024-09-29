@@ -1,10 +1,12 @@
 /*
-*-Enter
-#-Stop
-D-delete
-C-restart
+  -Enter
+  #-Stop
+  D-delete
+  C-restart
+
+  1000 step  = 13mm
 */
-#include <avr/wdt.h>  
+#include <avr/wdt.h>
 #include <AccelStepper.h>
 #include "Adafruit_Keypad.h"
 #include <Wire.h>
@@ -26,8 +28,8 @@ C-restart
 #define LIMIT_GND 50
 #define LIMIT_VCC 52
 
-#define START_POSITION 1000
-#define STOP_POSITION 10000
+#define START_POSITION 0
+#define STOP_POSITION 1000
 #define OFFSET_POSITION 200
 
 #define MAX_SPEED 4000 // step
@@ -36,11 +38,14 @@ C-restart
 #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-uint8_t state = 4;        // 0 - calibrate  1 - run  2 - stop  3-setting
-uint8_t settingState = 0; // 0-rpm   1-speed
+uint8_t state = 3;        // 0-calibrate  1-run  2-stop  3-setting
+uint8_t settingState = 0; // 0-rpm   1-speed   2-span
 int16_t destRound = 0, thisRound = 0;
+
+uint8_t span = 0;
 uint8_t speed = 9;
-uint16_t stepSpeed = MAX_SPEED;
+uint16_t stepSpeed = MAX_SPEED, spanStep;
+int16_t togo = -1;
 bool updateOled = true, resume = false;
 
 // Create an instance of AccelStepper
@@ -97,7 +102,7 @@ void setup()
 void loop()
 {
 
-  if (state == 1)
+  if (state == 1) // run
   {
 
     // Run the stepper motor non-blocking
@@ -114,15 +119,22 @@ void loop()
         if (thisRound == destRound)
           state = 2;
         updateOled = true;
-        stepper.moveTo(STOP_POSITION);
+        stepper.moveTo(spanStep);
+        togo = spanStep;
       }
-      else if (stepper.currentPosition() == STOP_POSITION)
+      else if (stepper.currentPosition() == spanStep)
       {
         stepper.moveTo(START_POSITION);
+        togo = START_POSITION;
+      }
+      else if (spanStep >= 0)
+      {
+        stepper.moveTo(togo);
       }
       else
       {
-        stepper.moveTo(STOP_POSITION);
+        stepper.moveTo(spanStep);
+        togo = spanStep;
       }
     }
 
@@ -133,71 +145,153 @@ void loop()
     //    }
 
     readStop();
-    OledDisplay();
   }
-  else if (state == 2)
+  else
   {
-    stepper.stop();
-    // Non-blocking keypad scan
     customKeypad.tick();
     while (customKeypad.available())
     {
+      // Non-blocking keypad scan
       keypadEvent e = customKeypad.read();
       Serial.print((char)e.bit.KEY);
+      char key;
       if (e.bit.EVENT == KEY_JUST_PRESSED)
       {
         Serial.println(" pressed");
-        char key = e.bit.KEY;
+        key = e.bit.KEY;
 
-        if (key == '*')
+        if (state == 0) // calibrate
         {
-          if (thisRound == destRound)
+        }
+        else if (state == 2) // stop
+        {
+          if (key == '*')
           {
+            if (thisRound == destRound)
+            {
+              thisRound = 0;
+              state = 0;
+            }
+            else
+            {
+              state = 1;
+              beforeRun();
+            }
+            updateOled = true;
+          }
+          else if (key == 'C')
+          {
+            state = 4;
             thisRound = 0;
+            updateOled = true;
+          }
+          else if (key == 'D')
+          {
+            ArduinoReset();
+          }
+        }
+      }
+
+      else if (state == 3) // setting
+      {
+        if (isdigit(key))
+        {
+          String inputString = "";
+          inputString += key;
+          if (settingState == 0) // round
+          {
+            if (destRound)
+            {
+              destRound = destRound * 10 + inputString.toInt();
+            }
+            else
+            {
+              destRound = inputString.toInt();
+            }
+            Serial.print("Converted Number: ");
+            Serial.println(destRound);
+            updateOled = true;
+          }
+          else if (settingState == 1) // speed
+          {
+            speed = inputString.toInt();
+            stepSpeed = 1000 + ((MAX_SPEED - 1000) * (speed + 1) / 10);
+            Serial.println("speed: " + String(speed) + "\tstepSpeed: " + String(stepSpeed));
+            updateOled = true;
+          }
+          else if (settingState == 2) // span
+          {
+            if (span)
+            {
+              span = span * 10 + inputString.toInt();
+            }
+            else
+            {
+              span = inputString.toInt();
+            }
+            spanStep = span * 1000 / 13;
+            Serial.println(span);
+            updateOled = true;
+          }
+        }
+        else if (key == '*') // next
+        {
+          if (settingState == 0)
+          {
+            settingState = 1;
+          }
+          else if (settingState == 1)
+          {
+            settingState = 2;
+          }
+          else if (settingState == 2)
+          {
             state = 0;
           }
-          else
+          updateOled = true;
+        }
+        else if (key == '#') // back
+        {
+          if (settingState == 1)
           {
-            state = 1;
-            beforeRun();
+            settingState = 0;
+          }
+          else if (settingState == 2)
+          {
+            settingState = 1;
           }
           updateOled = true;
         }
-        else if (key == 'C')
+        else if (key == 'D') // delete
         {
-          state = 4;
-          thisRound = 0;
+          Serial.println("Input cleared");
+          if (settingState == 0)
+            destRound = 0;
+          else if (settingState == 1)
+            speed = 0;
+          else if (settingState == 2)
+          {
+            span = 0;
+            spanStep = 0;
+          }
+
           updateOled = true;
-        }
-        else if (key == 'D')
-        {
-          ArduinoReset();
         }
       }
     }
 
-    OledDisplay();
-  }
-  else if (state == 0)
-  {
-    if (updateOled)
+    if (state == 2) // stop
     {
-      display.clearDisplay();
-      display.setTextSize(2); // Draw 2X-scale text
-      display.setTextColor(SSD1306_WHITE);
-      display.setCursor(0, 0);
-      display.print("Calibrate");
-      display.display();
-
-      updateOled = false;
+      stepper.stop();
     }
-    digitalWrite(ENABLE_PIN, LOW);
-    calibrate();
+    else if (state == 0)
+    {
+      digitalWrite(ENABLE_PIN, LOW);
+      calibrate();
+    }
   }
-  else if (state == 4)
-  {
-    settingFunc();
-  }
+
+  displayOled();
 }
 
 void calibrate()
@@ -209,6 +303,13 @@ void calibrate()
   stepper.moveTo(-20000);        // Move 1000 steps forward
   stepper.run();
 
+  display.clearDisplay();
+  display.setTextSize(2); // Draw 2X-scale text
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.print("Calibrating");
+  display.display();
+
   //  Serial.println(digitalRead(LIMIT_SIGNAL));
   Serial.print("Calibrating..");
   while (digitalRead(LIMIT_SIGNAL))
@@ -216,6 +317,7 @@ void calibrate()
     //    Serial.print(".");
     stepper.run();
   }
+
   setZero();
 }
 
@@ -246,6 +348,14 @@ void setZero()
   stepper.stop();
   stepper.setCurrentPosition(0);
   Serial.println("\nCalibrated!");
+
+  // display.clearDisplay();
+  // display.setTextSize(2); // Draw 2X-scale text
+  // display.setTextColor(SSD1306_WHITE);
+  // display.setCursor(0, 0);
+  // display.print("Calibrated");
+  // display.display();
+
   state = 1;
   beforeRun();
   stepper.setCurrentPosition(0);
@@ -259,121 +369,37 @@ void setZero()
 void setWorkingSpeed()
 {
   // Set up the stepper motor
-  stepper.setMaxSpeed(stepSpeed);     // Max speed in steps per second
-  stepper.setAcceleration(MAX_SPEED); // Acceleration in steps per second^2
+  stepper.setMaxSpeed(stepSpeed);         // Max speed in steps per second
+  stepper.setAcceleration(MAX_SPEED * 2); // Acceleration in steps per second^2
 
   // Start moving the stepper motor
-  stepper.moveTo(STOP_POSITION); // Move 10000 steps forward
+  stepper.moveTo(spanStep); // Move 10000 steps forward
+  togo = spanStep;
 }
 
-void settingFunc()
+void ArduinoReset()
 {
-  if (updateOled)
+  wdt_enable(WDTO_15MS);
+  while (1)
   {
-    display.clearDisplay();
-    display.setTextSize(2); // Draw 2X-scale text
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
-
-    if (settingState == 0)
-    {
-      display.println(F("set Round"));
-      display.setCursor(0, 28);
-      display.println(destRound);
-    }
-    else
-    {
-      display.println(F("set speed"));
-      display.setCursor(80, 25);
-      display.setTextSize(1);
-      display.println(F("(0-9)"));
-      display.setTextSize(2);
-      display.setCursor(0, 28);
-      display.println(speed);
-    }
-    display.setCursor(80, 50);
-    display.setTextSize(1);
-    display.print("* Enter");
-
-    display.display();
-
-    updateOled = false;
-  }
-
-  customKeypad.tick();
-  while (customKeypad.available())
-  {
-    keypadEvent e = customKeypad.read();
-
-    if (e.bit.EVENT == KEY_JUST_PRESSED)
-    {
-      Serial.print((char)e.bit.KEY);
-      Serial.println(" pressed");
-      char key = e.bit.KEY;
-
-      // If the key is a digit, add it to the inputString
-      if (isdigit(key))
-      {
-        String inputString = "";
-        inputString += key;
-        if (settingState == 0)
-        {
-          if (destRound)
-          {
-            destRound = destRound * 10 + inputString.toInt();
-          }
-          else
-          {
-            destRound = inputString.toInt();
-          }
-          Serial.print("Converted Number: ");
-          Serial.println(destRound);
-          updateOled = true;
-        }
-        else if (settingState == 1)
-        {
-          speed = inputString.toInt();
-          stepSpeed = 1000 + ((MAX_SPEED - 1000) * (speed + 1) / 10);
-          Serial.println("speed: " + String(speed) + "\tstepSpeed: " + String(stepSpeed));
-          updateOled = true;
-        }
-      }
-      else if (key == '*')
-      {
-        if (settingState == 0)
-        {
-          settingState = 1;
-          updateOled = true;
-        }
-        else if (settingState == 1)
-        {
-          state = 0;
-        }
-        updateOled = true;
-      }
-      else if (key == 'D')
-      {
-        Serial.println("Input cleared");
-        if (settingState == 0)
-          destRound = 0;
-        else if (settingState == 1)
-          speed = 0;
-
-        updateOled = true;
-      }
-    }
   }
 }
 
-void OledDisplay()
+void displayOled()
 {
-  if (updateOled)
-  {
-    display.clearDisplay();
-    display.setTextSize(2); // Draw 2X-scale text
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
+  if (!updateOled)
+    return;
 
+  display.clearDisplay();
+  display.setTextSize(2); // Draw 2X-scale text
+  display.setTextColor(SSD1306_WHITE);
+
+  if (state == 1)
+  {
+    display.setCursor(0, 0);
+    display.println("RUN");
+
+    display.setCursor(0, 20);
     if (thisRound < 0)
     {
       display.print("0");
@@ -388,17 +414,60 @@ void OledDisplay()
     display.setCursor(80, 50);
     display.setTextSize(1);
     display.println("# Stop");
-    display.display();
-
-    updateOled = false;
   }
-}
-
-
-void ArduinoReset()
-{
-  wdt_enable(WDTO_15MS);
-  while (1)
+  else if (state == 2)
   {
+    display.setCursor(0, 0);
+    display.println("STOP");
+
+    display.setCursor(0, 20);
+    if (thisRound < 0)
+    {
+      display.print("0");
+    }
+    else
+    {
+      display.print(thisRound);
+    }
+
+    display.print("/");
+    display.println(destRound);
+    display.setCursor(80, 50);
+    display.setTextSize(1);
+    display.println("* Resume");
   }
+  else if (state == 3)
+  {
+    display.setCursor(0, 0);
+
+    if (settingState == 0)
+    {
+      display.println(F("Round"));
+      display.setCursor(0, 28);
+      display.println(destRound);
+    }
+    else if (settingState == 1)
+    {
+      display.println(F("Speed (0-9)"));
+      // display.setCursor(80, 25);
+      // display.setTextSize(1);
+      // display.println(F(""));
+      // display.setTextSize(2);
+      display.setCursor(0, 20);
+      display.println(speed);
+    }
+    else
+    {
+      display.println(F("Span [cm]"));
+      display.setTextSize(2);
+      display.setCursor(0, 28);
+      display.println(span);
+    }
+    display.setCursor(80, 50);
+    display.setTextSize(1);
+    display.print("* Enter");
+  }
+
+  display.display();
+  updateOled = false;
 }
