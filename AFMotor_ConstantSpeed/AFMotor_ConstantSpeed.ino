@@ -2,7 +2,11 @@
   -Enter
   #-Stop
   D-delete
-  C-restart
+
+  A-restart
+
+  B- move+
+  C- move-
 
   1000 step  = 13mm
 */
@@ -48,6 +52,7 @@ uint16_t stepSpeed = MAX_SPEED;
 uint32_t spanStep;
 int16_t togo = -1;
 bool updateOled = true, resume = false;
+byte moveMotor = 0; //  1+   2-
 
 // Create an instance of AccelStepper
 AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
@@ -98,6 +103,9 @@ void setup()
   digitalWrite(LIMIT_GND, LOW);
 
   //  calibrate();
+
+  stepper.setMaxSpeed(2000);          // Max speed in steps per second
+  stepper.setAcceleration(MAX_SPEED); // Acceleration in steps per second^2
 }
 
 void loop()
@@ -116,7 +124,7 @@ void loop()
 
     // }else if(stepper.currentPosition() < stepper.distanceToGo())   // go to max span
     // {
-      
+
     // }
     // Change direction when the motor has reached its target
     else if (!digitalRead(LIMIT_SIGNAL) && stepper.currentPosition() > stepper.distanceToGo())
@@ -140,14 +148,14 @@ void loop()
 
     else if (stepper.currentPosition() == START_POSITION)
     {
-      stepper.move(-OFFSET_POSITION);
+      stepper.move(-OFFSET_POSITION * 3);
       Serial.println("move to limit switch");
     }
     else if (stepper.currentPosition() == spanStep)
     {
       stepper.moveTo(START_POSITION - OFFSET_POSITION);
       togo = START_POSITION - OFFSET_POSITION;
-      
+
       Serial.println("max span");
     }
     // else if (spanStep >= 0)
@@ -308,6 +316,36 @@ void loop()
           updateOled = true;
         }
       }
+
+      ////  move motor
+      if (e.bit.EVENT == KEY_JUST_PRESSED)
+      {
+        if (key == 'B')
+        {
+          digitalWrite(ENABLE_PIN, LOW);
+          moveMotor = 1;
+          Serial.println("Move +");
+          stepper.move(10000);
+        }
+        else if (key == 'C')
+        {
+          digitalWrite(ENABLE_PIN, LOW);
+          moveMotor = 2;
+          Serial.println("Move -");
+          stepper.move(-10000);
+        }
+      }
+      else if (e.bit.EVENT == KEY_JUST_RELEASED)
+      {
+        if (key == 'B' || key == 'C')
+        {
+          digitalWrite(ENABLE_PIN, HIGH);
+          moveMotor = 0;
+          Serial.println("Move stop");
+          digitalWrite(34, HIGH);
+          pinMode(34, OUTPUT);
+        }
+      }
     }
 
     if (state == 2) // stop
@@ -318,6 +356,19 @@ void loop()
     {
       digitalWrite(ENABLE_PIN, LOW);
       calibrate();
+    }
+  }
+
+  /// move motor
+  if (state == 2 || state == 3)
+  {
+    if (moveMotor == 1 || moveMotor == 2)
+    {
+      stepper.run();
+    }
+    else if (moveMotor == 0)
+    {
+      stepper.stop();
     }
   }
 
