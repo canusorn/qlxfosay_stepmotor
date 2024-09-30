@@ -30,7 +30,7 @@
 
 #define START_POSITION 0
 #define STOP_POSITION 1000
-#define OFFSET_POSITION 500
+#define OFFSET_POSITION 1000
 
 #define MAX_SPEED 4000 // step
 
@@ -111,8 +111,15 @@ void loop()
       resume = false;
       Serial.println("resume");
     }
+    // else if(stepper.currentPosition() > stepper.distanceToGo())    // go to limit switch
+    // {
+
+    // }else if(stepper.currentPosition() < stepper.distanceToGo())   // go to max span
+    // {
+      
+    // }
     // Change direction when the motor has reached its target
-    else if (!digitalRead(LIMIT_SIGNAL))
+    else if (!digitalRead(LIMIT_SIGNAL) && stepper.currentPosition() > stepper.distanceToGo())
     {
       stepper.stop();
       stepper.setCurrentPosition(0);
@@ -123,6 +130,7 @@ void loop()
       updateOled = true;
       stepper.moveTo(spanStep);
       togo = spanStep;
+      Serial.println("to limit switch");
     }
     // Run the stepper motor non-blocking
     else if (stepper.distanceToGo() != 0)
@@ -133,21 +141,26 @@ void loop()
     else if (stepper.currentPosition() == START_POSITION)
     {
       stepper.move(-OFFSET_POSITION);
+      Serial.println("move to limit switch");
     }
     else if (stepper.currentPosition() == spanStep)
     {
       stepper.moveTo(START_POSITION - OFFSET_POSITION);
-      togo = START_POSITION;
+      togo = START_POSITION - OFFSET_POSITION;
+      
+      Serial.println("max span");
     }
-    else if (spanStep >= 0)
-    {
-      stepper.moveTo(togo);
-    }
-    else
-    {
-      stepper.moveTo(spanStep);
-      togo = spanStep;
-    }
+    // else if (spanStep >= 0)
+    // {
+    //   stepper.moveTo(togo);
+    //   Serial.println("move to togo");
+    // }
+    // else
+    // {
+    //   stepper.moveTo(spanStep);
+    //   togo = spanStep;
+    //   Serial.println("else");
+    // }
 
     //    unsigned long currentMillis = millis();
     //    if (currentMillis - previousMillis >= 500) {
@@ -199,9 +212,9 @@ void loop()
             }
             updateOled = true;
           }
-          else if (key == 'C')
+          else if (key == 'D')
           {
-            state = 4;
+            state = 1;
             thisRound = 0;
             updateOled = true;
           }
