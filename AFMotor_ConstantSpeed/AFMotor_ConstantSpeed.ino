@@ -30,7 +30,7 @@
 
 #define START_POSITION 0
 #define STOP_POSITION 1000
-#define OFFSET_POSITION 200
+#define OFFSET_POSITION 500
 
 #define MAX_SPEED 4000 // step
 
@@ -44,7 +44,8 @@ int16_t destRound = 0, thisRound = 0;
 
 uint8_t span = 0;
 uint8_t speed = 9;
-uint16_t stepSpeed = MAX_SPEED, spanStep;
+uint16_t stepSpeed = MAX_SPEED;
+uint32_t spanStep;
 int16_t togo = -1;
 bool updateOled = true, resume = false;
 
@@ -104,38 +105,48 @@ void loop()
 
   if (state == 1) // run
   {
+    if (resume)
+    {
+      stepper.moveTo(togo);
+      resume = false;
+      Serial.println("resume");
+    }
+    // Change direction when the motor has reached its target
+    else if (!digitalRead(LIMIT_SIGNAL))
+    {
+      stepper.stop();
+      stepper.setCurrentPosition(0);
+      thisRound++;
+      if (thisRound == destRound)
+        state = 2;
 
+      updateOled = true;
+      stepper.moveTo(spanStep);
+      togo = spanStep;
+    }
     // Run the stepper motor non-blocking
-    if (stepper.distanceToGo() != 0)
+    else if (stepper.distanceToGo() != 0)
     {
       stepper.run();
     }
+
+    else if (stepper.currentPosition() == START_POSITION)
+    {
+      stepper.move(-OFFSET_POSITION);
+    }
+    else if (stepper.currentPosition() == spanStep)
+    {
+      stepper.moveTo(START_POSITION - OFFSET_POSITION);
+      togo = START_POSITION;
+    }
+    else if (spanStep >= 0)
+    {
+      stepper.moveTo(togo);
+    }
     else
     {
-      // Change direction when the motor has reached its target
-      if (stepper.currentPosition() == START_POSITION)
-      {
-        thisRound++;
-        if (thisRound == destRound)
-          state = 2;
-        updateOled = true;
-        stepper.moveTo(spanStep);
-        togo = spanStep;
-      }
-      else if (stepper.currentPosition() == spanStep)
-      {
-        stepper.moveTo(START_POSITION);
-        togo = START_POSITION;
-      }
-      else if (spanStep >= 0)
-      {
-        stepper.moveTo(togo);
-      }
-      else
-      {
-        stepper.moveTo(spanStep);
-        togo = spanStep;
-      }
+      stepper.moveTo(spanStep);
+      togo = spanStep;
     }
 
     //    unsigned long currentMillis = millis();
@@ -160,10 +171,18 @@ void loop()
         Serial.println(" pressed");
         key = e.bit.KEY;
 
-        if (state == 0) // calibrate
+        if (key == 'A')
         {
+          display.clearDisplay();
+          display.setTextSize(2); // Draw 2X-scale text
+          display.setTextColor(SSD1306_WHITE);
+          display.setCursor(0, 0);
+          display.print("Restart");
+          display.display();
+          ArduinoReset();
         }
-        else if (state == 2) // stop
+
+        if (state == 2) // stop
         {
           if (key == '*')
           {
@@ -174,6 +193,7 @@ void loop()
             }
             else
             {
+              resume = true;
               state = 1;
               beforeRun();
             }
@@ -184,10 +204,6 @@ void loop()
             state = 4;
             thisRound = 0;
             updateOled = true;
-          }
-          else if (key == 'D')
-          {
-            ArduinoReset();
           }
         }
       }
@@ -208,15 +224,14 @@ void loop()
             {
               destRound = inputString.toInt();
             }
-            Serial.print("Converted Number: ");
-            Serial.println(destRound);
+            Serial.println("Round: " + String(destRound));
             updateOled = true;
           }
           else if (settingState == 1) // speed
           {
             speed = inputString.toInt();
             stepSpeed = 1000 + ((MAX_SPEED - 1000) * (speed + 1) / 10);
-            Serial.println("speed: " + String(speed) + "\tstepSpeed: " + String(stepSpeed));
+            Serial.println("Speed: " + String(speed) + "\tStepSpeed: " + String(stepSpeed));
             updateOled = true;
           }
           else if (settingState == 2) // span
@@ -229,8 +244,10 @@ void loop()
             {
               span = inputString.toInt();
             }
-            spanStep = span * 1000 / 13;
-            Serial.println(span);
+            spanStep = span * 77;
+            // spanStep /= 13;
+            Serial.println("Span: " + String(span) + "\tSpanStep: " + String(spanStep));
+            // Serial.println(spanStep);
             updateOled = true;
           }
         }
@@ -335,12 +352,17 @@ void readStop()
     Serial.println(digitalRead(28));
     stepper.stop();
     state = 2;
+    updateOled = true;
   }
-  if (!digitalRead(LIMIT_SIGNAL))
-  {
-    stepper.stop();
-    setZero();
-  }
+  // if (!digitalRead(LIMIT_SIGNAL))
+  // {
+  //   stepper.stop();
+  //   // setZero();
+  //   stepper.setCurrentPosition(0);
+  //   stepper.moveTo(spanStep); // Move 10000 steps forward
+  //   togo = spanStep;
+  //   updateOled = true;
+  // }
 }
 
 void setZero()
@@ -348,13 +370,6 @@ void setZero()
   stepper.stop();
   stepper.setCurrentPosition(0);
   Serial.println("\nCalibrated!");
-
-  // display.clearDisplay();
-  // display.setTextSize(2); // Draw 2X-scale text
-  // display.setTextColor(SSD1306_WHITE);
-  // display.setCursor(0, 0);
-  // display.print("Calibrated");
-  // display.display();
 
   state = 1;
   beforeRun();
@@ -394,7 +409,7 @@ void displayOled()
   display.setTextSize(2); // Draw 2X-scale text
   display.setTextColor(SSD1306_WHITE);
 
-  if (state == 1)
+  if (state == 1) // run
   {
     display.setCursor(0, 0);
     display.println("RUN");
@@ -410,12 +425,14 @@ void displayOled()
     }
 
     display.print("/");
-    display.println(destRound);
-    display.setCursor(80, 50);
+    display.print(destRound);
     display.setTextSize(1);
+    display.println(" [" + String(spanStep) + "]");
+    display.setCursor(80, 50);
+    // display.setTextSize(1);
     display.println("# Stop");
   }
-  else if (state == 2)
+  else if (state == 2) //  stop
   {
     display.setCursor(0, 0);
     display.println("STOP");
@@ -431,10 +448,12 @@ void displayOled()
     }
 
     display.print("/");
-    display.println(destRound);
-    display.setCursor(80, 50);
+    display.print(destRound);
     display.setTextSize(1);
-    display.println("* Resume");
+    display.println(" [" + String(spanStep) + "]");
+    display.setCursor(0, 50);
+    // display.setTextSize(1);
+    display.println("A Reset    * Resume");
   }
   else if (state == 3)
   {
@@ -448,17 +467,17 @@ void displayOled()
     }
     else if (settingState == 1)
     {
-      display.println(F("Speed (0-9)"));
+      display.println(F("Speed(0-9)"));
       // display.setCursor(80, 25);
       // display.setTextSize(1);
       // display.println(F(""));
       // display.setTextSize(2);
-      display.setCursor(0, 20);
+      display.setCursor(0, 28);
       display.println(speed);
     }
     else
     {
-      display.println(F("Span [cm]"));
+      display.println(F("Span[cm]"));
       display.setTextSize(2);
       display.setCursor(0, 28);
       display.println(span);
