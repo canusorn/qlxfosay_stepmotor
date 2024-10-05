@@ -359,6 +359,11 @@ void loop()
           pinMode(34, OUTPUT);
         }
       }
+
+//      if (!digitalRead(LIMIT_SIGNAL))
+//      {
+//        stepper.stop();
+//      }
     }
 
     if (state == 2 && !moveMotor) // stop
@@ -376,13 +381,13 @@ void loop()
   if (state == 2 || state == 3)
   {
     if (moveMotor == 1)    {
-      Serial.println("curr:" + String(stepper.currentPosition()) + "\tdis" + String(stepper.distanceToGo()));
-      stepper.move(1000);
+      //      Serial.println("curr:" + String(stepper.currentPosition()) + "\tdis" + String(stepper.distanceToGo()));
+      stepper.moveTo(30000);
       stepper.run();
 
     } else if (moveMotor == 2) {
-      Serial.println("curr:" + String(stepper.currentPosition()) + "\tdis" + String(stepper.distanceToGo()));
-      stepper.move(-1000);
+      //      Serial.println("curr:" + String(stepper.currentPosition()) + "\tdis" + String(stepper.distanceToGo()));
+      stepper.moveTo(-30000);
       stepper.run();
     }
     else if (moveMotor == 0)
@@ -407,7 +412,7 @@ void calibrate()
   display.setTextSize(2); // Draw 2X-scale text
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
-  display.print("Calibrating");
+  display.print("Calibrate");
   display.display();
 
   //  Serial.println(digitalRead(LIMIT_SIGNAL));
@@ -511,7 +516,7 @@ void displayOled()
     display.print("/");
     display.print(destRound);
     display.setTextSize(1);
-    display.println(" [" + String(spanStep) + "]");
+    //    display.println(" [" + String(spanStep) + "]");
     display.setCursor(80, 50);
     // display.setTextSize(1);
     display.println("# Stop");
