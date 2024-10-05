@@ -53,6 +53,7 @@ uint32_t spanStep;
 int16_t togo = -1;
 bool updateOled = true, resume = false;
 byte moveMotor = 0; //  1+   2-
+long savedPosition = 0;
 
 // Create an instance of AccelStepper
 AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
@@ -61,10 +62,11 @@ AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
 const byte ROWS = 4;
 const byte COLS = 4;
 char keys[ROWS][COLS] = {
-    {'1', '2', '3', 'A'},
-    {'4', '5', '6', 'B'},
-    {'7', '8', '9', 'C'},
-    {'*', '0', '#', 'D'}};
+  {'1', '2', '3', 'A'},
+  {'4', '5', '6', 'B'},
+  {'7', '8', '9', 'C'},
+  {'*', '0', '#', 'D'}
+};
 byte rowPins[ROWS] = {22, 24, 26, 28}; // connect to the row pinouts of the keypad
 byte colPins[COLS] = {30, 32, 34, 36}; // connect to the column pinouts of the keypad
 
@@ -115,6 +117,9 @@ void loop()
   {
     if (resume)
     {
+      digitalWrite(ENABLE_PIN, LOW);
+      stepper.setCurrentPosition(savedPosition);
+      setWorkingSpeed();
       stepper.moveTo(togo);
       resume = false;
       Serial.println("resume");
@@ -130,6 +135,7 @@ void loop()
     else if (!digitalRead(LIMIT_SIGNAL) && stepper.currentPosition() > stepper.distanceToGo())
     {
       stepper.stop();
+      setWorkingSpeed();
       stepper.setCurrentPosition(0);
       thisRound++;
       if (thisRound == destRound)
@@ -158,6 +164,13 @@ void loop()
 
       Serial.println("max span");
     }
+    else if (stepper.distanceToGo() == 0) {
+      stepper.setMaxSpeed(2000);     // Max speed in steps per second
+      stepper.setAcceleration(1000); // Acceleration in steps per second^2
+      stepper.moveTo(-20000);        // Move 1000 steps forward
+
+      Serial.println("calibrate to limit switch");
+    }
     // else if (spanStep >= 0)
     // {
     //   stepper.moveTo(togo);
@@ -173,7 +186,7 @@ void loop()
     //    unsigned long currentMillis = millis();
     //    if (currentMillis - previousMillis >= 500) {
     //      previousMillis = currentMillis;
-    //      Serial.println(stepper.currentPosition());
+    //      Serial.println("curr:" + String(stepper.currentPosition()) + "dis:" + String(stepper.distanceToGo()));
     //    }
 
     readStop();
@@ -220,12 +233,12 @@ void loop()
             }
             updateOled = true;
           }
-          else if (key == 'D')
-          {
-            state = 1;
-            thisRound = 0;
-            updateOled = true;
-          }
+          //          else if (key == 'D')
+          //          {
+          //            state = 1;
+          //            thisRound = 0;
+          //            updateOled = true;
+          //          }
         }
       }
 
@@ -265,7 +278,7 @@ void loop()
             {
               span = inputString.toInt();
             }
-            spanStep = span * 77;
+            spanStep = span * 77 * 10;
             // spanStep /= 13;
             Serial.println("Span: " + String(span) + "\tSpanStep: " + String(spanStep));
             // Serial.println(spanStep);
@@ -325,14 +338,14 @@ void loop()
           digitalWrite(ENABLE_PIN, LOW);
           moveMotor = 1;
           Serial.println("Move +");
-          stepper.move(10000);
+          stepper.move(1000);
         }
         else if (key == 'C')
         {
           digitalWrite(ENABLE_PIN, LOW);
           moveMotor = 2;
           Serial.println("Move -");
-          stepper.move(-10000);
+          stepper.move(-1000);
         }
       }
       else if (e.bit.EVENT == KEY_JUST_RELEASED)
@@ -348,7 +361,7 @@ void loop()
       }
     }
 
-    if (state == 2) // stop
+    if (state == 2 && !moveMotor) // stop
     {
       stepper.stop();
     }
@@ -362,8 +375,14 @@ void loop()
   /// move motor
   if (state == 2 || state == 3)
   {
-    if (moveMotor == 1 || moveMotor == 2)
-    {
+    if (moveMotor == 1)    {
+      Serial.println("curr:" + String(stepper.currentPosition()) + "\tdis" + String(stepper.distanceToGo()));
+      stepper.move(1000);
+      stepper.run();
+
+    } else if (moveMotor == 2) {
+      Serial.println("curr:" + String(stepper.currentPosition()) + "\tdis" + String(stepper.distanceToGo()));
+      stepper.move(-1000);
       stepper.run();
     }
     else if (moveMotor == 0)
@@ -415,6 +434,7 @@ void readStop()
   {
     Serial.println(digitalRead(28));
     stepper.stop();
+    savedPosition = stepper.currentPosition();
     state = 2;
     updateOled = true;
   }
