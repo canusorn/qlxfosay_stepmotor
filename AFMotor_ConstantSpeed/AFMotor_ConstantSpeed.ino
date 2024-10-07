@@ -278,7 +278,7 @@ void loop()
             {
               span = inputString.toInt();
             }
-            spanStep = span * 77 * 10;
+            spanStep = span * 820;
             // spanStep /= 13;
             Serial.println("Span: " + String(span) + "\tSpanStep: " + String(spanStep));
             // Serial.println(spanStep);
